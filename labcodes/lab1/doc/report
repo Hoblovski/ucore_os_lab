@@ -1,0 +1,175 @@
+sub 1
+
+1.	 操作系统镜像文件ucore.img是如何一步一步生成的?(需要比较详细地解释Makefile中每
+一条相关命令和命令参数的含义,以及说明命令导致的结果)
+
+基本的命令
+# create ucore.img
+UCOREIMG	:= $(call totarget,ucore.img)
+    其中 totarget 函数在 tools/function.mk 中定义
+    此命令说明了输出文件 ucore.img 输出到 bin/ucore.img
+
+此外还有
+$(UCOREIMG): $(kernel) $(bootblock)
+	$(V)dd if=/dev/zero of=$@ count=10000
+	$(V)dd if=$(bootblock) of=$@ conv=notrunc
+	$(V)dd if=$(kernel) of=$@ seek=1 conv=notrunc
+
+它实际上执行的命令是 (通过 make clean; make -n 得到)
+dd if=/dev/zero of=bin/ucore.img count=10000
+    创建磁盘镜像 ucore.img, 由 10000 个扇区, 每个 512 字节构成
+dd if=bin/bootblock of=bin/ucore.img conv=notrunc
+    将 bootloader (512字节大小) 代码放入 ucore.img 最开头
+dd if=bin/kernel of=bin/ucore.img seek=1 conv=notrunc
+    将 kernel 代码放入 ucore.img 从 ucore 第二个扇区开始的地方
+    因为一个扇区是512字节, 所以就相当于将 kernel 在 ucore.img 紧挨着 bootloader 放置
+    符合课上的描述, 即磁盘的前 512 字节是引导记录, 操作系统代码紧挨其后
+
+依赖项 kernel 是操作系统代码, 其编译链接 kern/ 中代码
+$(kernel): $(KOBJS)
+        KOBJS 是生成 kern/ (以及lib/) 中代码的目标文件
+	@echo + ld $@
+	$(V)$(LD) $(LDFLAGS) -T tools/kernel.ld -o $@ $(KOBJS)
+        按照 tools/kernel.ld, 将目标文件链接生成 bin/nernel
+	@$(OBJDUMP) -S $@ > $(call asmfile,kernel)
+        生成一些 obj/kernel.asm 即 kernel 的反汇编结果
+	@$(OBJDUMP) -t $@ | $(SED) '1,/SYMBOL TABLE/d; s/ .* / /; /^$$/d' > $(call symfile,kernel)
+        生成 obj/kernel.sym 符号表
+
+依赖项 bootblock 生成 bootloader 代码
+$(bootblock): $(call toobj,$(bootfiles)) | $(call totarget,sign)
+        编译得到 bootloader 的一些目标文件,
+        得到 bin/sign 	
+    @echo + ld $@
+	$(V)$(LD) $(LDFLAGS) -N -e start -Ttext 0x7C00 $^ -o $(call toobj,bootblock)
+        将 bootloader 的目标文件链接
+	@$(OBJDUMP) -S $(call objfile,bootblock) > $(call asmfile,bootblock)
+        生成 obj/bootblock.asm 方便调试
+	@$(OBJCOPY) -S -O binary $(call objfile,bootblock) $(call outfile,bootblock)
+        拷贝一个纯净的 bootloader (即只包含代码指令的)
+	@$(call totarget,sign) $(call outfile,bootblock) $(bootblock)
+        使用 sign 将 bootloader 代码转换成能放到引导扇区中的格式 
+            (事实上就是加一个末尾的0x55, 0xAA)
+
+******************************************************************************
+
+
+2.	 一个被系统认为是符合规范的硬盘主引导扇区的特征是什么?
+    大小合法即可, 即不包含结尾的 0x55, 0xAA 时大小不超过 510 字节即可
+
+******************************************************************************
+
+
+1.2
+执行如下命令即可
+
+hob:lab1/ (master✗) $ make debug     
+
+hob:lab1/ (master✗) $ gdb -q -x tools/gdbinit 
+
+******************************************************************************
+
+1.3
+
+为何开启A20,以及如何开启A20
+    因为我们不需要在启动时使用古老的,
+    针对8086写的利用 20 位总线回绕特性的bootloader,
+    所以我们要打开 A20 (i.e. 地址不回绕)
+    之后因为保护模式也不需要将地址的第21位设为0, 所以我们要保持打开.
+
+    开启:
+        以下的写input buffer 都要等到8042的input buffer为空再做
+        给 8042 的 0x64 端口发送 0xd1, 准备写 output port
+        准备好后将 output port 的第2位设为1
+
+如何初始化GDT表
+    在 bootasm.S 中初始化和设定 GDT 表
+
+    首先其初始化了一块内存, 其中包含
+        * [selector=0] 一个空段 (base=0, limit=0)
+        * [selector=8] 一个代码段 (base=0, limit=4G,
+            P=1 (段存在), S=1 (代码数据),
+            DPL=0 (内核权限),
+            type=0xA (rx))
+        * [selector=0x10] 一个数据段 (base=0, limit=4G,
+            present=1, type=1,
+            DPL=0,
+            type=0x2 (rw))
+
+    之后将 [段表大小 (2B), 段表地址 (4B)] 放入内存中, 如
+    gdtdesc:
+        .word 0x17                                      # sizeof(gdt) - 1
+        .long gdt                                       # address gdt
+    
+    最后调用 lgdt gdtdesc 读取 GDT 表
+
+    ?? 为什么要是 sizeof(gdt) 再要减去1? Intel Manual中 lgdt 没有看到
+
+如何使能和进入保护模式
+    首先通过 lgdt 读取段表
+    之后设置 CR0.PE (CR0 = CR0 | 0x1)
+    这样就相当于进入保护模式了
+    之后再初始化除了 CS 以外的 段selector寄存器
+    就完全准备好了
+
+******************************************************************************
+
+bootloader如何读取硬盘扇区的？
+
+有如下步骤
+    1. 等待磁盘就绪 (不停轮询0x1f7端口)
+    2. 1 -> port 0x1f2, 表示读一个扇区
+    3. 读取的扇区号 -> port 0x1f3~0x1f7
+    4. 指定 LBA 模式和使用主盘
+    5. 等待磁盘就绪
+    6. 从port 0x1f0 循环读取数据到 dst
+
+bootloader是如何加载ELF格式的OS？
+
+bootloader中通过 readseg(dst_va, n_read_bytes, kernel_elf_offset)
+    将 kernel 中从 kernel_elf_offset 开始的 n_read_bytes 读取到内存中 dst_va 开始的区域
+如下步骤
+    1. 从磁盘开头, 引导记录之后 (扇区号从1开始的区域), 读取一页 (4K, 等于8个扇区),
+        其中包含了所有program header
+    2. 检查 ELF Magic, 确定 kernel 格式是 ELF
+    3. 顺序读取每个 program header 对应的 area
+
+******************************************************************************
+
+请完成实验，看看输出是否与上述显示大致一致，并解释最后一行各个数值的含义。
+
+示例输出 参见 1.5png
+最后一行是 bootmain 的栈帧
+ebp:0x00007bf8
+    从 bootasm.S 中知道, 最开始的时候设置为
+        %esp=0x7c00; %ebp=0x0
+    之后跳转到bootmain函数, 这时执行 
+        push %ebp
+        栈
+                7c00    old %ebp (equals 0)
+        esp ->  7bf8    ...             
+                7bf4    ...
+        movl %esp, %ebp
+                    7c00    old %ebp (equals 0)
+        esp,ebp ->  7bf8    ...             
+                    7bf4    ...
+eip:00007d6e
+    此处的代码是
+    ((void (*)(void))(ELFHDR->e_entry & 0xFFFFFF))();
+    正好是离开 bootmain 导致 eip 被保存到栈上的代码
+
+args:0xc031fcfa 0xc08ed88e 0x64e4d08e 0xfa7502a8
+    这是 7c00~7c10 的内存. 这一内存区域是 bootloader 代码开始存放的区域
+    所以这些参数事实上是 bootloader 最初几条指令
+<unknow>: -- 0x00007d6d --
+    参见eip的解释
+
+
+******************************************************************************
+
+中断描述符表（也可简称为保护模式下的中断向量表）中一个表项占多少字节？其中哪几位代表中断处理代码的入口？
+    8字节.
+    最开始2字节和最后2字节表示入口在段内偏移
+    第3和第4字节是段selector
+    他们共同指定中断处理程序的入口
+

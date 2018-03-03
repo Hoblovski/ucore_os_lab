@@ -1,0 +1,20 @@
+tools/sign.c
+    18: 检查, 引导记录大小 < 510 
+
+    之后加入结尾 byte[510] = 0x55, byte[511] = 0xAA 
+
+tools/vector.c
+    生成 vector.S, 生成 256 种判断
+
+bootasm.s
+
+bootmain.c
+    为什么要 0xE0
+    outb(0x1F6, ((secno >> 24) & 0xF) | 0xE0);
+
+    是因为把 secno 的输出范围限制到 0 到 2G 吗?
+
+
+
+
+
