@@ -9,26 +9,24 @@ UCOREIMG	:= $(call totarget,ucore.img)
     其中 totarget 函数在 tools/function.mk 中定义
     此命令说明了输出文件 ucore.img 输出到 bin/ucore.img
 
+它实际上执行的命令是 (通过 make clean; make -n 得到实际执行的命令)
+
 此外还有
 $(UCOREIMG): $(kernel) $(bootblock)
 	$(V)dd if=/dev/zero of=$@ count=10000
+        创建磁盘镜像 ucore.img, 由 10000 个扇区, 每个 512 字节构成
 	$(V)dd if=$(bootblock) of=$@ conv=notrunc
+        将 bootloader (512字节大小) 代码放入 ucore.img 最开头
 	$(V)dd if=$(kernel) of=$@ seek=1 conv=notrunc
+        将 kernel 代码放入 ucore.img 从 ucore 第二个扇区开始的地方
+        因为一个扇区是512字节, 所以就相当于将 kernel 在 ucore.img 紧挨着 bootloader 放置
+        符合课上的描述, 即磁盘的前 512 字节是引导记录, 操作系统代码紧挨其后
 
-它实际上执行的命令是 (通过 make clean; make -n 得到)
-dd if=/dev/zero of=bin/ucore.img count=10000
-    创建磁盘镜像 ucore.img, 由 10000 个扇区, 每个 512 字节构成
-dd if=bin/bootblock of=bin/ucore.img conv=notrunc
-    将 bootloader (512字节大小) 代码放入 ucore.img 最开头
-dd if=bin/kernel of=bin/ucore.img seek=1 conv=notrunc
-    将 kernel 代码放入 ucore.img 从 ucore 第二个扇区开始的地方
-    因为一个扇区是512字节, 所以就相当于将 kernel 在 ucore.img 紧挨着 bootloader 放置
-    符合课上的描述, 即磁盘的前 512 字节是引导记录, 操作系统代码紧挨其后
-
-依赖项 kernel 是操作系统代码, 其编译链接 kern/ 中代码
+依赖项 $(kernel) 是操作系统代码, 其编译链接 kern/ 中代码
 $(kernel): $(KOBJS)
-        KOBJS 是生成 kern/ (以及lib/) 中代码的目标文件
+        [KOBJS 是生成 kern/ (以及lib/) 中代码的目标文件]
 	@echo + ld $@
+        显示命令情况
 	$(V)$(LD) $(LDFLAGS) -T tools/kernel.ld -o $@ $(KOBJS)
         按照 tools/kernel.ld, 将目标文件链接生成 bin/nernel
 	@$(OBJDUMP) -S $@ > $(call asmfile,kernel)
@@ -36,11 +34,12 @@ $(kernel): $(KOBJS)
 	@$(OBJDUMP) -t $@ | $(SED) '1,/SYMBOL TABLE/d; s/ .* / /; /^$$/d' > $(call symfile,kernel)
         生成 obj/kernel.sym 符号表
 
-依赖项 bootblock 生成 bootloader 代码
+依赖项 $(bootblock) 生成 bootloader 代码, 包含 boot/ 中代码
 $(bootblock): $(call toobj,$(bootfiles)) | $(call totarget,sign)
         编译得到 bootloader 的一些目标文件,
         得到 bin/sign 	
     @echo + ld $@
+        ...
 	$(V)$(LD) $(LDFLAGS) -N -e start -Ttext 0x7C00 $^ -o $(call toobj,bootblock)
         将 bootloader 的目标文件链接
 	@$(OBJDUMP) -S $(call objfile,bootblock) > $(call asmfile,bootblock)
@@ -173,3 +172,11 @@ args:0xc031fcfa 0xc08ed88e 0x64e4d08e 0xfa7502a8
     第3和第4字节是段selector
     他们共同指定中断处理程序的入口
 
+******************************************************************************
+
+和参考答案的区别
+
+1.1 
+    没有详细解释 gcc, objcopy 编译时候的各种参数
+
+其余意思是一样的, 只是表述的差别. 如答案是用中文注释了代码, 而我是用中文转述了代码.
