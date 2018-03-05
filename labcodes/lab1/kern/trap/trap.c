@@ -37,7 +37,7 @@ extern uintptr_t __vectors[];   // ISR vector; length=256
 void
 idt_init(void) {
      /* LAB1 YOUR CODE : STEP 2 */
-    for (int intrno = 0; intrno < 256; intrno++) {
+    for (int intrno = 0; intrno < sizeof(idt) / sizeof(struct gatedesc); intrno++) {
         uintptr_t is_excep = (intrno < 32) ? 1 : 0;
         uint16_t seg_sel = GD_KTEXT;
         uint32_t offset = __vectors[intrno];
