@@ -97,6 +97,8 @@ struct e820map {
  * that convert Page to other data types, such as phyical address.
  * */
 struct Page {
+    /*** WARNING: dzy project, in lab2 ref is always 0 because it's basically
+     * the same as isfree(p), which is property & 2 */
     int ref;                        // page frame's reference counter
     uint32_t flags;                 // array of flags that describe the status of the page frame
     unsigned int property;          // the num of free block, used in first fit pm manager
