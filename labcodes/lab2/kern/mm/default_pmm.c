@@ -9,7 +9,7 @@
    usually split, and the remainder added to the list as another free block.
    Please see Page 196~198, Section 8.2 of Yan Wei Min's chinese book "Data Structure -- C programming language"
 */
-// LAB2 EXERCISE 1: YOUR CODE
+// LAB2 EXERCISE 1: 2015011296
 // you should rewrite functions: default_init,default_init_memmap,default_alloc_pages, default_free_pages.
 /*
  * Details of FFMA
@@ -71,11 +71,13 @@ default_init_memmap(struct Page *base, size_t n) {
     struct Page *p = base;
     for (; p != base + n; p ++) {
         assert(PageReserved(p));
-        p->flags = p->property = 0;
-        set_page_ref(p, 0);
+        // rewritten here to improve readability
+        ClearPageReserved(p);   // p can be used for alloc/free
+        SetPageProperty(p);     // p is free
+        p->property = 0;        // if p->property then it's not head frame
+        set_page_ref(p, 0);     // no page refer to this frame
     }
-    base->property = n;
-    SetPageProperty(base);
+    base->property = n;         // base is head frame, thus property != 0
     nr_free += n;
     list_add(&free_list, &(base->page_link));
 }
@@ -86,6 +88,7 @@ default_alloc_pages(size_t n) {
     if (n > nr_free) {
         return NULL;
     }
+    // find containing free area
     struct Page *page = NULL;
     list_entry_t *le = &free_list;
     while ((le = list_next(le)) != &free_list) {
@@ -95,48 +98,106 @@ default_alloc_pages(size_t n) {
             break;
         }
     }
+    // use / split the free area
     if (page != NULL) {
-        list_del(&(page->page_link));
-        if (page->property > n) {
+        for (struct Page *p = page; p < page + n; p++) {
+            ClearPageProperty(p);           // p is not free
+            if (p != page)
+                assert(p->property == 0);   // not head
+        }
+        if (page->property > n) {           // split
             struct Page *p = page + n;
+            assert(p->property == 0);       // originally not head
             p->property = page->property - n;
-            list_add(&free_list, &(p->page_link));
-    }
+            list_add_after(&(page->page_link), &(p->page_link));
+        }
+        list_del(&(page->page_link));
+        page->property = n;                 // head frame
         nr_free -= n;
-        ClearPageProperty(page);
     }
     return page;
 }
 
+#ifdef DZY_DIAGNOSE
+static void
+dzy_show_free_list() {
+    cprintf("  dzy_show_free_list>>>\n");
+    list_entry_t *le = &free_list;
+    while ((le = list_next(le)) != &free_list) {
+        struct Page *p = le2page(le, page_link);
+        cprintf("    property=%d, flag[free]=%d, flag[reserved]=%d\n",
+                p->property, PageProperty(p), PageReserved(p));
+    }
+    cprintf("  <<<dzy_show_free_list\n");
+}
+#endif
+
+/*** WARNING: allows double freeing ***/
 static void
 default_free_pages(struct Page *base, size_t n) {
     assert(n > 0);
-    struct Page *p = base;
-    for (; p != base + n; p ++) {
-        assert(!PageReserved(p) && !PageProperty(p));
-        p->flags = 0;
-        set_page_ref(p, 0);
-    }
-    base->property = n;
-    SetPageProperty(base);
-    list_entry_t *le = list_next(&free_list);
-    while (le != &free_list) {
-        p = le2page(le, page_link);
-        le = list_next(le);
-        if (base + base->property == p) {
-            base->property += p->property;
-            ClearPageProperty(p);
-            list_del(&(p->page_link));
+    struct Page *begin = base;
+    struct Page *end = base + n;
+    struct Page *add_after = NULL;
+    int free_size = n;
+
+    // find overlapping / adjacent free area, delete them from list
+    //     because they shall be merged with the freed area
+    list_entry_t *le = &free_list;
+    while ((le = list_next(le)) != &free_list) {
+        struct Page *le_p_begin = le2page(le, page_link);
+        assert(le_p_begin->property > 0);
+        struct Page *le_p_end = le_p_begin + le_p_begin->property;
+        if (le_p_end < begin) {     // [le) ... [begin, end)
+            add_after = le_p_begin;
+            continue;
         }
-        else if (p + p->property == base) {
-            p->property += base->property;
-            ClearPageProperty(base);
-            base = p;
-            list_del(&(p->page_link));
+        if (le_p_begin > end)       // [begin, end) ... [le)
+            continue;
+        // [le) overlaps / adjacent to [begin, end)
+        list_del(&(le_p_begin->page_link));
+        // merge with existing areas
+        if (le_p_begin < begin) {   // [le_begin, ..., begin ...
+            free_size += begin - le_p_begin;
+            begin = le_p_begin;
+        } 
+        if (le_p_end > end) {       // end .. le_p_end)
+            free_size += le_p_end - end;
+            end = le_p_end;
+        } 
+    }
+
+    if (!PageProperty(begin)) { // begin is not free, truncate area
+        struct Page *p = begin;
+        while (p->property == 0) p--; // find head
+        // [p_begin, begin..., p_end) -> not free
+        p->property = begin - p;
+    }
+
+    if (!PageProperty(end)) { // end is not free, truncate area
+        struct Page *p = end;
+        while (p->property == 0) p--;
+        // [p_begin, ..., end, p_end)
+        end->property = p->property - (end - p);
+    }
+
+    // [begin, end) becomes free, mark
+    for (struct Page *p = begin; p != end; p++) {
+        if (PageProperty(p)) {  // free
+            p->property = 0;
+        } else {                // not free
+            nr_free++;
+            p->property = 0;
+            SetPageProperty(p); // mark as free
         }
     }
-    nr_free += n;
-    list_add(&free_list, &(base->page_link));
+    assert(free_size == end - begin);
+    begin->property = free_size;
+
+    if (add_after != NULL)
+        list_add_after(&(add_after->page_link), &(begin->page_link));
+    else
+        list_add_after(&free_list, &(begin->page_link));
 }
 
 static size_t
