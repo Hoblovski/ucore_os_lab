@@ -377,6 +377,7 @@ get_pte(pde_t *pgdir, uintptr_t la, bool create) {
             assert(p != NULL);
             page_ref_inc(p);
             uintptr_t pa_pt = page2pa(p);
+            memset(KADDR(pa_pt), 0, PGSIZE);
             *pdep = pa_pt | PTE_U | PTE_W | PTE_P; // set pde
         } else {
             // not present, don't allocate => return NULL
@@ -442,7 +443,10 @@ page_remove_pte(pde_t *pgdir, uintptr_t la, pte_t *ptep) {
         free_page(p);
         assert(*pdep & PTE_P);
     }
-    tlb_invalidate(pgdir, la); // maybe this is not necessary?
+    *ptep = 0;
+    tlb_invalidate(pgdir, la); // maybe this is not necessary? yes
+    // not all function calling me will invalidate tlb.
+
     //(1) check if this page table entry is present
     //(2) find corresponding page to pte
     //(3) decrease page reference
