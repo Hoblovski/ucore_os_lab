@@ -9,7 +9,7 @@
    usually split, and the remainder added to the list as another free block.
    Please see Page 196~198, Section 8.2 of Yan Wei Min's chinese book "Data Structure -- C programming language"
 */
-// LAB2 EXERCISE 1: YOUR CODE
+// LAB2 EXERCISE 1: 2015011296
 // you should rewrite functions: default_init,default_init_memmap,default_alloc_pages, default_free_pages.
 /*
  * Details of FFMA
@@ -75,7 +75,7 @@ default_init_memmap(struct Page *base, size_t n) {
         ClearPageReserved(p);   // p can be used for alloc/free
         SetPageProperty(p);     // p is free
         p->property = 0;        // if p->property then it's not head frame
-        set_page_ref(p, 0);     // wtf is ref ..
+        set_page_ref(p, 0);     // no page refer to this frame
     }
     base->property = n;         // base is head frame, thus property != 0
     nr_free += n;
