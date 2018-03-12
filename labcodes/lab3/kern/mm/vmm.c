@@ -8,9 +8,9 @@
 #include <x86.h>
 #include <swap.h>
 
-/* 
+/*
   vmm design include two parts: mm_struct (mm) & vma_struct (vma)
-  mm is the memory manager for the set of continuous virtual memory  
+  mm is the memory manager for the set of continuous virtual memory
   area which have the same PDT. vma is a continuous virtual memory area.
   There a linear link list for vma & a redblack link list for vma in mm.
 ---------------
@@ -49,6 +49,7 @@ mm_create(void) {
         mm->pgdir = NULL;
         mm->map_count = 0;
 
+        // before swap_init, swap_init_ok == 0
         if (swap_init_ok) swap_init_mm(mm);
         else mm->sm_priv = NULL;
     }
@@ -76,6 +77,7 @@ find_vma(struct mm_struct *mm, uintptr_t addr) {
     if (mm != NULL) {
         vma = mm->mmap_cache;
         if (!(vma != NULL && vma->vm_start <= addr && vma->vm_end > addr)) {
+                // addr not in vma, or vma == NULL; start looking for vma
                 bool found = 0;
                 list_entry_t *list = &(mm->mmap_list), *le = list;
                 while ((le = list_next(le)) != list) {
@@ -113,14 +115,14 @@ insert_vma_struct(struct mm_struct *mm, struct vma_struct *vma) {
     list_entry_t *list = &(mm->mmap_list);
     list_entry_t *le_prev = list, *le_next;
 
-        list_entry_t *le = list;
-        while ((le = list_next(le)) != list) {
-            struct vma_struct *mmap_prev = le2vma(le, list_link);
-            if (mmap_prev->vm_start > vma->vm_start) {
-                break;
-            }
-            le_prev = le;
+    list_entry_t *le = list;
+    while ((le = list_next(le)) != list) {
+        struct vma_struct *mmap_prev = le2vma(le, list_link);
+        if (mmap_prev->vm_start > vma->vm_start) {
+            break;
         }
+        le_prev = le;
+    }
 
     le_next = list_next(le_prev);
 
@@ -145,7 +147,7 @@ mm_destroy(struct mm_struct *mm) {
     list_entry_t *list = &(mm->mmap_list), *le;
     while ((le = list_next(list)) != list) {
         list_del(le);
-        kfree(le2vma(le, list_link),sizeof(struct vma_struct));  //kfree vma        
+        kfree(le2vma(le, list_link),sizeof(struct vma_struct));  //kfree vma
     }
     kfree(mm, sizeof(struct mm_struct)); //kfree mm
     mm=NULL;
@@ -162,7 +164,7 @@ vmm_init(void) {
 static void
 check_vmm(void) {
     size_t nr_free_pages_store = nr_free_pages();
-    
+
     check_vma_struct();
     check_pgfault();
 
@@ -221,7 +223,7 @@ check_vma_struct(void) {
     for (i =4; i>=0; i--) {
         struct vma_struct *vma_below_5= find_vma(mm,i);
         if (vma_below_5 != NULL ) {
-           cprintf("vma_below_5: i %x, start %x, end %x\n",i, vma_below_5->vm_start, vma_below_5->vm_end); 
+           cprintf("vma_below_5: i %x, start %x, end %x\n",i, vma_below_5->vm_start, vma_below_5->vm_end);
         }
         assert(vma_below_5 == NULL);
     }
@@ -347,7 +349,7 @@ do_pgfault(struct mm_struct *mm, uint32_t error_code, uintptr_t addr) {
     ret = -E_NO_MEM;
 
     pte_t *ptep=NULL;
-    /*LAB3 EXERCISE 1: YOUR CODE
+    /*LAB3 EXERCISE 1: 2015011296
     * Maybe you want help comment, BELOW comments can help you finish the code
     *
     * Some Useful MACROs and DEFINEs, you can use them in below implementation.
@@ -364,15 +366,22 @@ do_pgfault(struct mm_struct *mm, uint32_t error_code, uintptr_t addr) {
     *   mm->pgdir : the PDT of these vma
     *
     */
-#if 0
-    /*LAB3 EXERCISE 1: YOUR CODE*/
-    ptep = ???              //(1) try to find a pte, if pte's PT(Page Table) isn't existed, then create a PT.
+    /*LAB3 EXERCISE 1: 2015011296 */
+    ptep = get_pte(mm->pgdir, addr, 1);              //(1) try to find a pte, if pte's PT(Page Table) isn't existed, then create a PT.
+    if (*ptep == NULL) {
+        cprintf("do_pgfault: get_pte failed.\n");
+        goto failed;
+    }
     if (*ptep == 0) {
+        struct Page *page = pgdir_alloc_page(mm->pgdir, addr, perm);
                             //(2) if the phy addr isn't exist, then alloc a page & map the phy addr with logical addr
-
+        if (page == NULL) {
+            cprintf("do_pgfault: pgdir_alloc_page failed.\n");
+            goto failed;
+        }
     }
     else {
-    /*LAB3 EXERCISE 2: YOUR CODE
+    /*LAB3 EXERCISE 2: 2015011296
     * Now we think this pte is a  swap entry, we should load data from disk to a page with phy addr,
     * and map the phy addr with logical addr, trigger swap manager to record the access situation of this page.
     *
@@ -384,18 +393,26 @@ do_pgfault(struct mm_struct *mm, uint32_t error_code, uintptr_t addr) {
     *    swap_map_swappable ： set the page swappable
     */
         if(swap_init_ok) {
-            struct Page *page=NULL;
                                     //(1）According to the mm AND addr, try to load the content of right disk page
                                     //    into the memory which page managed.
+            struct Page *page=NULL;
+            int t = swap_in(mm, addr, &page);
+            assert(t == 0);
+//            page = pgdir_alloc_page(mm->pgdir, addr, perm);
+//            swapfs_read(0x100 + (*ptep & (~0xFF)), page);
+//            cprintf("swap_load: swap entry=%d, vaddr=%d\n",
+//                    ((*ptep)>>8)+1, addr);
                                     //(2) According to the mm, addr AND page, setup the map of phy addr <---> logical addr
+            page->pra_vaddr = ROUNDDOWN(addr, PGSIZE);
+            page_insert(mm->pgdir, page, addr, perm);
                                     //(3) make the page swappable.
+            swap_map_swappable(mm, addr, page, 0);
         }
         else {
             cprintf("no swap_init_ok but ptep is %x, failed\n",*ptep);
             goto failed;
         }
    }
-#endif
    ret = 0;
 failed:
     return ret;

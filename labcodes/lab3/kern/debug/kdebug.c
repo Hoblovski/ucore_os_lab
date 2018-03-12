@@ -293,7 +293,19 @@ read_eip(void) {
  * */
 void
 print_stackframe(void) {
-     /* LAB1 YOUR CODE : STEP 1 */
+     /* LAB1 2015011296 : STEP 1 */
+#define dzy_word_at(ad,offset) (*(((uint32_t*) (ad)) + offset))
+
+    for (uint32_t ebp = read_ebp(), eip = read_eip();
+            ebp != 0;
+            eip = *(((uint32_t*) ebp) + 1), ebp = *(uint32_t*) ebp) {
+        cprintf("ebp:0x%08x eip:%08x", ebp, eip);
+        cprintf(" args:0x%08x 0x%08x 0x%08x 0x%08x\n",
+                dzy_word_at(ebp,2), dzy_word_at(ebp,3),
+                dzy_word_at(ebp,4), dzy_word_at(ebp,5));
+        print_debuginfo(eip-1);
+    }
+
      /* (1) call read_ebp() to get the value of ebp. the type is (uint32_t);
       * (2) call read_eip() to get the value of eip. the type is (uint32_t);
       * (3) from 0 .. STACKFRAME_DEPTH
