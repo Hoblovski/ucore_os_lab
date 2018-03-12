@@ -8,9 +8,9 @@
 #include <x86.h>
 #include <swap.h>
 
-/* 
+/*
   vmm design include two parts: mm_struct (mm) & vma_struct (vma)
-  mm is the memory manager for the set of continuous virtual memory  
+  mm is the memory manager for the set of continuous virtual memory
   area which have the same PDT. vma is a continuous virtual memory area.
   There a linear link list for vma & a redblack link list for vma in mm.
 ---------------
@@ -147,7 +147,7 @@ mm_destroy(struct mm_struct *mm) {
     list_entry_t *list = &(mm->mmap_list), *le;
     while ((le = list_next(list)) != list) {
         list_del(le);
-        kfree(le2vma(le, list_link),sizeof(struct vma_struct));  //kfree vma        
+        kfree(le2vma(le, list_link),sizeof(struct vma_struct));  //kfree vma
     }
     kfree(mm, sizeof(struct mm_struct)); //kfree mm
     mm=NULL;
@@ -164,7 +164,7 @@ vmm_init(void) {
 static void
 check_vmm(void) {
     size_t nr_free_pages_store = nr_free_pages();
-    
+
     check_vma_struct();
     check_pgfault();
 
@@ -223,7 +223,7 @@ check_vma_struct(void) {
     for (i =4; i>=0; i--) {
         struct vma_struct *vma_below_5= find_vma(mm,i);
         if (vma_below_5 != NULL ) {
-           cprintf("vma_below_5: i %x, start %x, end %x\n",i, vma_below_5->vm_start, vma_below_5->vm_end); 
+           cprintf("vma_below_5: i %x, start %x, end %x\n",i, vma_below_5->vm_start, vma_below_5->vm_end);
         }
         assert(vma_below_5 == NULL);
     }
@@ -366,10 +366,10 @@ do_pgfault(struct mm_struct *mm, uint32_t error_code, uintptr_t addr) {
     *   mm->pgdir : the PDT of these vma
     *
     */
-#if 0
-    /*LAB3 EXERCISE 1: YOUR CODE*/
-    ptep = ???              //(1) try to find a pte, if pte's PT(Page Table) isn't existed, then create a PT.
+    /*LAB3 EXERCISE 1: 2015011296 */
+    ptep = get_pte(mm->pgdir, addr, 1);              //(1) try to find a pte, if pte's PT(Page Table) isn't existed, then create a PT.
     if (*ptep == 0) {
+        struct Page *page = pgdir_alloc_page(mm->pgdir, addr, perm);
                             //(2) if the phy addr isn't exist, then alloc a page & map the phy addr with logical addr
 
     }
@@ -397,7 +397,6 @@ do_pgfault(struct mm_struct *mm, uint32_t error_code, uintptr_t addr) {
             goto failed;
         }
    }
-#endif
    ret = 0;
 failed:
     return ret;
