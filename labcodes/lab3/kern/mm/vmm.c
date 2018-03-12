@@ -368,10 +368,17 @@ do_pgfault(struct mm_struct *mm, uint32_t error_code, uintptr_t addr) {
     */
     /*LAB3 EXERCISE 1: 2015011296 */
     ptep = get_pte(mm->pgdir, addr, 1);              //(1) try to find a pte, if pte's PT(Page Table) isn't existed, then create a PT.
+    if (*ptep == NULL) {
+        cprintf("do_pgfault: get_pte failed.\n");
+        goto failed;
+    }
     if (*ptep == 0) {
         struct Page *page = pgdir_alloc_page(mm->pgdir, addr, perm);
                             //(2) if the phy addr isn't exist, then alloc a page & map the phy addr with logical addr
-
+        if (page == NULL) {
+            cprintf("do_pgfault: pgdir_alloc_page failed.\n");
+            goto failed;
+        }
     }
     else {
     /*LAB3 EXERCISE 2: 2015011296
@@ -400,8 +407,6 @@ do_pgfault(struct mm_struct *mm, uint32_t error_code, uintptr_t addr) {
             page_insert(mm->pgdir, page, addr, perm);
                                     //(3) make the page swappable.
             swap_map_swappable(mm, addr, page, 0);
-
-
         }
         else {
             cprintf("no swap_init_ok but ptep is %x, failed\n",*ptep);
