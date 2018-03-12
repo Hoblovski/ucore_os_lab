@@ -191,8 +191,8 @@ trap_dispatch(struct trapframe *tf) {
     then you can add code here. 
 #endif
         /* LAB1 2015011296 : STEP 3 */
-        n_ticks = (n_ticks + 1) % TICK_NUM;
-        if (!n_ticks)
+        n_ticks = (n_ticks + 1);
+        if (n_ticks % TICK_NUM == 0)
             print_ticks();
         /* handle the timer interrupt */
         /* (1) After a timer interrupt, you should record this event using a global variable (increase it), such as ticks in kern/driver/clock.c
