@@ -180,6 +180,8 @@ free_pages(struct Page *base, size_t n) {
     local_intr_save(intr_flag);
     {
         pmm_manager->free_pages(base, n);
+        for (struct Page *p = base; p < base + n; p++)
+            set_page_ref(p, 0);
     }
     local_intr_restore(intr_flag);
 }
@@ -388,6 +390,7 @@ get_pte(pde_t *pgdir, uintptr_t la, bool create) {
             // create
             struct Page *p = alloc_page();
             assert(p != NULL);
+            assert(page_ref(p) == 0);
             page_ref_inc(p);
             uintptr_t pa_pt = page2pa(p);
             memset(KADDR(pa_pt), 0, PGSIZE);
@@ -518,8 +521,10 @@ tlb_invalidate(pde_t *pgdir, uintptr_t la) {
 // pgdir_alloc_page - call alloc_page & page_insert functions to 
 //                  - allocate a page size memory & setup an addr map
 //                  - pa<->la with linear address la and the PDT pgdir
+/** @la: aligned to PAGESZ */
 struct Page *
 pgdir_alloc_page(pde_t *pgdir, uintptr_t la, uint32_t perm) {
+    assert(la % PGSIZE == 0);
     struct Page *page = alloc_page();
     if (page != NULL) {
         if (page_insert(pgdir, page, la, perm) != 0) {

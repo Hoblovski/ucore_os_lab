@@ -183,6 +183,7 @@ default_free_pages(struct Page *base, size_t n) {
 
     // [begin, end) becomes free, mark
     for (struct Page *p = begin; p != end; p++) {
+        set_page_ref(p, 0);
         if (PageProperty(p)) {  // free
             p->property = 0;
         } else {                // not free
