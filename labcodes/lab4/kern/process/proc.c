@@ -306,10 +306,10 @@ do_fork(uint32_t clone_flags, uintptr_t stack, struct trapframe *tf) {
     int t;
     //    1. call alloc_proc to allocate a proc_struct
     proc = alloc_proc();
-    proc->pid = get_pid();
-    proc->parent = current;
     if (proc == NULL)
         goto fork_out;
+    proc->pid = get_pid();
+    proc->parent = current;
     //    2. call setup_kstack to allocate a kernel stack for child process
     if (setup_kstack(proc) != 0)
         goto bad_fork_cleanup_proc;
@@ -319,14 +319,18 @@ do_fork(uint32_t clone_flags, uintptr_t stack, struct trapframe *tf) {
     //    4. call copy_thread to setup tf & context in proc_struct
     copy_thread(proc, stack, tf);
     //    5. insert proc_struct into hash_list && proc_list
-    hash_proc(proc);
-    list_add(&proc_list, &(proc->list_link));
-    nr_process++;
+    bool intr_flag;
+    local_intr_save(intr_flag);
+    {
+        hash_proc(proc);
+        list_add(&proc_list, &(proc->list_link));
+        nr_process++;
+    }
+    local_intr_restore(intr_flag);
     //    6. call wakeup_proc to make the new child process RUNNABLE
     wakeup_proc(proc);
     //    7. set ret vaule using child proc's pid
     ret = proc->pid;
-    proc->state = PROC_RUNNABLE;
 fork_out:
     return ret;
 
