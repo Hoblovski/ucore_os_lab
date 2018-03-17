@@ -487,7 +487,6 @@ do_pgfault(struct mm_struct *mm, uint32_t error_code, uintptr_t addr) {
 		     We should add the LAB3's results here.
      */
         if(swap_init_ok) {
-            // LAB5: update here
             //(1）According to the mm AND addr, try to load the content of right disk page
             //    into the memory which page managed.
             struct Page *page=NULL;
@@ -502,6 +501,7 @@ do_pgfault(struct mm_struct *mm, uint32_t error_code, uintptr_t addr) {
             page_insert(mm->pgdir, page, addr, perm);
             //(3) make the page swappable.
             swap_map_swappable(mm, addr, page, 0);
+            //(4) [NOTICE]: you myabe need to update your lab3's implementation for LAB5's normal execution.
         }
         else {
             cprintf("no swap_init_ok but ptep is %x, failed\n",*ptep);

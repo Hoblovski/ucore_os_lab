@@ -115,12 +115,14 @@ alloc_proc(void) {
      *       uint32_t flags;                             // Process flag
      *       char name[PROC_NAME_LEN + 1];               // Process name
      */
-     //LAB5 YOUR CODE : (update LAB4 steps)
+     //LAB5 2015011296 : (update LAB4 steps)
     /*
      * below fields(add in LAB5) in proc_struct need to be initialized	
      *       uint32_t wait_state;                        // waiting state
      *       struct proc_struct *cptr, *yptr, *optr;     // relations between processes
 	 */
+        proc->wait_state = 0;
+        proc->cptr = proc->yptr = proc->optr = NULL;
     }
     return proc;
 }
@@ -328,7 +330,6 @@ copy_mm(uint32_t clone_flags, struct proc_struct *proc) {
         goto bad_mm;
     }
     if (setup_pgdir(mm) != 0) {
-        goto bad_pgdir_cleanup_mm;
     }
 
     lock_mm(oldmm);
@@ -408,6 +409,7 @@ do_fork(uint32_t clone_flags, uintptr_t stack, struct trapframe *tf) {
         goto fork_out;
     proc->pid = get_pid();
     proc->parent = current;
+    assert(current->wait_state == 0);
     //    2. call setup_kstack to allocate a kernel stack for child process
     if (setup_kstack(proc) != 0)
         goto bad_fork_cleanup_proc;
@@ -422,7 +424,7 @@ do_fork(uint32_t clone_flags, uintptr_t stack, struct trapframe *tf) {
     {
         hash_proc(proc);
         list_add(&proc_list, &(proc->list_link));
-        nr_process++;
+        set_links(proc);
     }
     local_intr_restore(intr_flag);
     //    6. call wakeup_proc to make the new child process RUNNABLE
@@ -635,6 +637,11 @@ load_icode(unsigned char *binary, size_t size) {
      *          tf_eip should be the entry point of this binary program (elf->e_entry)
      *          tf_eflags should be set to enable computer to produce Interrupt
      */
+    tf->tf_cs = USER_CS;
+    tf->tf_ds = tf->tf_es = tf->tf_ss = USER_DS;
+    tf->tf_esp = USTACKTOP;
+    tf->tf_eip = elf->e_entry;
+    tf->tf_eflags |= FL_IF;
     ret = 0;
 out:
     return ret;
