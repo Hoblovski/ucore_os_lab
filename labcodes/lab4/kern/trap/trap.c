@@ -37,7 +37,7 @@ extern uintptr_t __vectors[];
 /* idt_init - initialize IDT to each of the entry points in kern/trap/vectors.S */
 void
 idt_init(void) {
-     /* LA 1 2015011296: STEP 2 */
+     /* LAB 1 2015011296: STEP 2 */
     for (int intrno = 0; intrno < sizeof(idt) / sizeof(struct gatedesc); intrno++) {
         uintptr_t is_excep = (intrno < 32) ? 1 : 0;
         uint16_t seg_sel = GD_KTEXT;
