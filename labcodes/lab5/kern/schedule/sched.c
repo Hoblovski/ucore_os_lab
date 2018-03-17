@@ -44,7 +44,6 @@ schedule(void) {
         }
         next->runs ++;
         if (next != current) {
-            cprintf("schedule, run: pid=%d\n", next->pid);
             proc_run(next);
         }
     }
