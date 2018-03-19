@@ -363,7 +363,7 @@ pmm_init(void) {
 // return vaule: the kernel virtual address of this pte
 pte_t *
 get_pte(pde_t *pgdir, uintptr_t la, bool create) {
-    /* LAB2 EXERCISE 2: YOUR CODE
+    /* LAB2 EXERCISE 2: 2015011296
      *
      * If you need to visit a physical address, please use KADDR()
      * please read pmm.h for useful macros
@@ -384,18 +384,38 @@ get_pte(pde_t *pgdir, uintptr_t la, bool create) {
      *   PTE_W           0x002                   // page table/directory entry flags bit : Writeable
      *   PTE_U           0x004                   // page table/directory entry flags bit : User can access
      */
-#if 0
-    pde_t *pdep = NULL;   // (1) find page directory entry
-    if (0) {              // (2) check if entry is not present
-                          // (3) check if creating is needed, then alloc page for page table
-                          // CAUTION: this page is used for page table, not for common data page
-                          // (4) set page reference
-        uintptr_t pa = 0; // (5) get linear address of page
-                          // (6) clear page content using memset
-                          // (7) set page directory entry's permission
+    pde_t *pdep = pgdir + (PDX(la));    // get pde
+    if (!(*pdep & PTE_P)) {
+        // not present
+        if (create) {
+            // create
+            struct Page *p = alloc_page();
+            assert(p != NULL);
+            assert(page_ref(p) == 0);
+            page_ref_inc(p);
+            uintptr_t pa_pt = page2pa(p);
+            memset(KADDR(pa_pt), 0, PGSIZE);
+            *pdep = pa_pt | PTE_U | PTE_W | PTE_P; // set pde
+        } else {
+            // not present, don't allocate => return NULL
+            return NULL;
+        }
+    } else {
+        // already exists, just use pdep
     }
-    return NULL;          // (8) return page table entry
-#endif
+    // *pdep is page directory entry
+    pte_t* ptep = (pte_t*) KADDR(PDE_ADDR(*pdep));
+    ptep += PTX(la);    // get pte
+    return ptep;
+    // (1) find page directory entry
+    // (2) check if entry is not present
+    // (3) check if creating is needed, then alloc page for page table
+    // CAUTION: this page is used for page table, not for common data page
+    // (4) set page reference
+    // (5) get linear address of page
+    // (6) clear page content using memset
+    // (7) set page directory entry's permission
+    // (8) return page table entry
 }
 
 //get_page - get related Page struct for linear address la using PDT pgdir
@@ -416,7 +436,7 @@ get_page(pde_t *pgdir, uintptr_t la, pte_t **ptep_store) {
 //note: PT is changed, so the TLB need to be invalidate 
 static inline void
 page_remove_pte(pde_t *pgdir, uintptr_t la, pte_t *ptep) {
-    /* LAB2 EXERCISE 3: YOUR CODE
+    /* LAB2 EXERCISE 3: 2015011296
      *
      * Please check if ptep is valid, and tlb must be manually updated if mapping is updated
      *
@@ -432,15 +452,23 @@ page_remove_pte(pde_t *pgdir, uintptr_t la, pte_t *ptep) {
      * DEFINEs:
      *   PTE_P           0x001                   // page table/directory entry flags bit : Present
      */
-#if 0
-    if (0) {                      //(1) check if this page table entry is present
-        struct Page *page = NULL; //(2) find corresponding page to pte
-                                  //(3) decrease page reference
-                                  //(4) and free this page when page reference reachs 0
-                                  //(5) clear second page table entry
-                                  //(6) flush tlb
+    if (!(*ptep & PTE_P))
+        return;
+    pde_t *pdep = pgdir + PDX(la);
+    struct Page *p = pte2page(*ptep);
+    if (page_ref_dec(p) == 0) {
+        free_page(p);
+        assert(*pdep & PTE_P);
     }
-#endif
+    *ptep = 0;
+    tlb_invalidate(pgdir, la); // maybe this is not necessary? yes
+    // not all function calling me will invalidate tlb.
+    //(1) check if this page table entry is present
+    //(2) find corresponding page to pte
+    //(3) decrease page reference
+    //(4) and free this page when page reference reachs 0
+    //(5) clear second page table entry
+    //(6) flush tlb
 }
 
 void
@@ -508,20 +536,24 @@ copy_range(pde_t *to, pde_t *from, uintptr_t start, uintptr_t end, bool share) {
         assert(page!=NULL);
         assert(npage!=NULL);
         int ret=0;
-        /* LAB5:EXERCISE2 YOUR CODE
-         * replicate content of page to npage, build the map of phy addr of nage with the linear addr start
-         *
-         * Some Useful MACROs and DEFINEs, you can use them in below implementation.
-         * MACROs or Functions:
-         *    page2kva(struct Page *page): return the kernel vritual addr of memory which page managed (SEE pmm.h)
-         *    page_insert: build the map of phy addr of an Page with the linear addr la
-         *    memcpy: typical memory copy function
-         *
-         * (1) find src_kvaddr: the kernel virtual address of page
-         * (2) find dst_kvaddr: the kernel virtual address of npage
-         * (3) memory copy from src_kvaddr to dst_kvaddr, size is PGSIZE
-         * (4) build the map of phy addr of  nage with the linear addr start
-         */
+            /* LAB5:EXERCISE2 2015011296
+             * replicate content of page to npage, build the map of phy addr of nage with the linear addr start
+             *
+             * Some Useful MACROs and DEFINEs, you can use them in below implementation.
+             * MACROs or Functions:
+             *    page2kva(struct Page *page): return the kernel vritual addr of memory which page managed (SEE pmm.h)
+             *    page_insert: build the map of phy addr of an Page with the linear addr la
+             *    memcpy: typical memory copy function
+             *
+             * (1) find src_kvaddr: the kernel virtual address of page
+             * (2) find dst_kvaddr: the kernel virtual address of npage
+             * (3) memory copy from src_kvaddr to dst_kvaddr, size is PGSIZE
+             * (4) build the map of phy addr of  nage with the linear addr start
+             */
+            uintptr_t src_kvaddr = page2kva(page);
+            uintptr_t dst_kvaddr = page2kva(npage);
+            memcpy((void*) dst_kvaddr, (void*) src_kvaddr, PGSIZE);
+            ret = page_insert(to, npage, start, perm);
         assert(ret == 0);
         }
         start += PGSIZE;

@@ -13,24 +13,24 @@ static struct sched_class *sched_class;
 
 static struct run_queue *rq;
 
-static inline void
+void
 sched_class_enqueue(struct proc_struct *proc) {
     if (proc != idleproc) {
         sched_class->enqueue(rq, proc);
     }
 }
 
-static inline void
+void
 sched_class_dequeue(struct proc_struct *proc) {
     sched_class->dequeue(rq, proc);
 }
 
-static inline struct proc_struct *
+struct proc_struct *
 sched_class_pick_next(void) {
     return sched_class->pick_next(rq);
 }
 
-static void
+void
 sched_class_proc_tick(struct proc_struct *proc) {
     if (proc != idleproc) {
         sched_class->proc_tick(rq, proc);
