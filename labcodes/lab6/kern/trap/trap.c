@@ -233,17 +233,18 @@ trap_dispatch(struct trapframe *tf) {
          * (3) Too Simple? Yes, I think so!
          */
         /* LAB5 2015011296 */
-            current->need_resched = 1;
+        //  current->need_resched = 1;
         /* you should upate you lab1 code (just add ONE or TWO lines of code):
          *    Every TICK_NUM cycle, you should set current process's current->need_resched = 1
          */
+            sched_class_proc_tick(current);
         }
-        break;
         /* LAB6 YOUR CODE */
         /* you should upate you lab5 code
          * IMPORTANT FUNCTIONS:
 	     * sched_class_proc_tick
          */
+        break;
     case IRQ_OFFSET + IRQ_COM1:
         c = cons_getc();
         cprintf("serial [%03d] %c\n", c, c);
