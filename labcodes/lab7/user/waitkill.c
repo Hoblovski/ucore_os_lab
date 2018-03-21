@@ -3,10 +3,10 @@
 
 void
 do_yield(void) {
-    yield();
-    yield();
-    yield();
-    yield();
+//    yield();
+//    yield();
+//    yield();
+//    yield();
     yield();
     yield();
 }
