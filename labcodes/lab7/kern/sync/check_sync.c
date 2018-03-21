@@ -164,7 +164,7 @@ int philosopher_using_semaphore(void * arg) /* i：哲学家号码，从0到N-1 
  */
 
 struct proc_struct *philosopher_proc_condvar[N]; // N philosopher
-int state_condvar[N];                            // the philosopher's state: EATING, HUNGARY, THINKING  
+int state_condvar[N];                            // the philosopher's state: EATING, HUNGRY, THINKING  
 monitor_t mt, *mtp=&mt;                          // monitor
 
 void phi_test_condvar (i) { 
@@ -184,6 +184,11 @@ void phi_take_forks_condvar(int i) {
      // LAB7 EXERCISE1: YOUR CODE
      // I am hungry
      // try to get fork
+    state_condvar[i] = HUNGRY;
+    phi_test_condvar(i);
+    if (state_condvar[i] != EATING) { // failed to get the conditions
+        cond_wait(&(mtp->cv[i]));
+    }
 //--------leave routine in monitor--------------
       if(mtp->next_count>0)
          up(&(mtp->next));
@@ -193,11 +198,13 @@ void phi_take_forks_condvar(int i) {
 
 void phi_put_forks_condvar(int i) {
      down(&(mtp->mutex));
-
 //--------into routine in monitor--------------
      // LAB7 EXERCISE1: YOUR CODE
      // I ate over
      // test left and right neighbors
+    state_condvar[i] = THINKING;
+    phi_test_condvar(LEFT);
+    phi_test_condvar(RIGHT);
 //--------leave routine in monitor--------------
      if(mtp->next_count>0)
         up(&(mtp->next));
@@ -247,6 +254,7 @@ void check_sync(void){
     for(i=0;i<N;i++){
         state_condvar[i]=THINKING;
         int pid = kernel_thread(philosopher_using_condvar, (void *)i, 0);
+        cprintf("philosopher[%d]->pid=%d\n", i, pid);
         if (pid <= 0) {
             panic("create No.%d philosopher_using_condvar failed.\n");
         }

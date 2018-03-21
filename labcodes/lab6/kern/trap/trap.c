@@ -239,7 +239,7 @@ trap_dispatch(struct trapframe *tf) {
          */
             sched_class_proc_tick(current);
         }
-        /* LAB6 YOUR CODE */
+        /* LAB6 2015011296 */
         /* you should upate you lab5 code
          * IMPORTANT FUNCTIONS:
 	     * sched_class_proc_tick
