@@ -727,8 +727,20 @@ load_icode(int fd, int argc, char **kargv) {
     lcr3(PADDR(mm->pgdir));
 
     /* (6) setup uargc and uargv in user stacks */
-    *(char***) (USTACKTOP - sizeof(char**)) = kargv; // fuck C pointers
-    *(int*) (USTACKTOP - sizeof(char**) - sizeof(int)) = argc;
+    uintptr_t utop = USTACKTOP;
+    for (int i = 0; i < argc; i++) {
+        uintptr_t argv_i_sz = strlen(kargv[i])+1;
+        strcpy(utop -= argv_i_sz, kargv[i]);
+    }
+    utop = utop &(~3); // align to 4 bytes ... what the hell I need sauce!
+    uintptr_t utop2 = USTACKTOP; // points to argv string table
+    for (int i = 0; i < argc; i++) {
+        uintptr_t argv_i_sz = strlen(kargv[i])+1;
+        *(uintptr_t*) utop = (utop2 -= argv_i_sz);
+        utop -= sizeof(uintptr_t);
+    }
+    utop -= sizeof(int);
+    *(uint32_t*) utop = argc;
 
     /* (7) setup trapframe for user environment */
         //(6) setup trapframe for user environment
@@ -745,7 +757,7 @@ load_icode(int fd, int argc, char **kargv) {
      */
     tf->tf_cs = USER_CS;
     tf->tf_ds = tf->tf_es = tf->tf_ss = USER_DS;
-    tf->tf_esp = USTACKTOP - sizeof(char**) - sizeof(int) - sizeof(int);
+    tf->tf_esp = utop; //USTACKTOP - sizeof(char**) - sizeof(int) - sizeof(int);
     tf->tf_eip = elf->e_entry;
     tf->tf_eflags |= FL_IF;
     ret = 0;
@@ -811,7 +823,6 @@ failed_cleanup:
 //           - call load_icode to setup new memory space accroding binary prog.
 int
 do_execve(const char *name, int argc, const char **argv) {
-    cprintf("do_execve %s\n", name);
     static_assert(EXEC_MAX_ARG_LEN >= FS_MAX_FPATH_LEN);
     struct mm_struct *mm = current->mm;
     if (!(argc >= 1 && argc <= EXEC_MAX_ARG_NUM)) {
@@ -846,6 +857,7 @@ do_execve(const char *name, int argc, const char **argv) {
 
     /* sysfile_open will check the first argument path, thus we have to use a user-space pointer, and argv[0] may be incorrect */
     int fd;
+    cprintf("execve on %s\n", path);
     if ((ret = fd = sysfile_open(path, O_RDONLY)) < 0) {
         goto execve_exit;
     }
@@ -1020,7 +1032,7 @@ init_main(void *arg) {
         panic("create user_main failed.\n");
     }
  extern void check_sync(void);
-    // check_sync();                // check philosopher sync problem
+    check_sync();                // check philosopher sync problem
 
     while (do_wait(0, NULL) == 0) {
         schedule();
