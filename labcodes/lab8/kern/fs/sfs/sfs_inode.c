@@ -554,6 +554,7 @@ sfs_io_nolock(struct sfs_fs *sfs, struct sfs_inode *sin, void *buf, off_t offset
     struct sfs_disk_inode *din = sin->din;
     assert(din->type != SFS_TYPE_DIR);
     off_t endpos = offset + *alenp, blkoff;
+
     *alenp = 0;
 	// calculate the Rd/Wr end position
     if (offset < 0 || offset >= SFS_MAX_FILE_SIZE || offset > endpos) {
@@ -586,6 +587,7 @@ sfs_io_nolock(struct sfs_fs *sfs, struct sfs_inode *sin, void *buf, off_t offset
     int ret = 0;
     size_t size, alen = 0;
     uint32_t ino;
+    // blkno: logical block number
     uint32_t blkno = offset / SFS_BLKSIZE;          // The NO. of Rd/Wr begin block
     uint32_t nblks = endpos / SFS_BLKSIZE - blkno;  // The size of Rd/Wr blocks
 
@@ -594,11 +596,45 @@ sfs_io_nolock(struct sfs_fs *sfs, struct sfs_inode *sin, void *buf, off_t offset
 	 * (1) If offset isn't aligned with the first block, Rd/Wr some content from offset to the end of the first block
 	 *       NOTICE: useful function: sfs_bmap_load_nolock, sfs_buf_op
 	 *               Rd/Wr size = (nblks != 0) ? (SFS_BLKSIZE - blkoff) : (endpos - offset)
-	 * (2) Rd/Wr aligned blocks 
+     */
+    // logical blk_idx to physical blk_idx
+    int t = sfs_bmap_load_nolock(sfs, sin, blkno++, &ino);
+    assert(t == 0); // avoid expr with side-effects in assert.
+                    // TODO: error handling
+    blkoff = offset % SFS_BLKSIZE;
+    size_t first_blk_rwlen = (nblks != 0) ? (SFS_BLKSIZE - blkoff) : (endpos - offset);
+    t = sfs_buf_op(sfs, buf, first_blk_rwlen, ino, blkoff);
+    assert(t == 0); // TODO: error robust handling
+#define dzy_advance(p, l) (p = (void*) (((char*)(p)) + (l)))
+    dzy_advance(buf, first_blk_rwlen);
+    alen += first_blk_rwlen;
+
+	 /* (2) Rd/Wr aligned blocks 
 	 *       NOTICE: useful function: sfs_bmap_load_nolock, sfs_block_op
-     * (3) If end position isn't aligned with the last block, Rd/Wr some content from begin to the (endpos % SFS_BLKSIZE) of the last block
+     */
+    if (nblks > 1) {
+        for (int remain_nblks = nblks - 1; remain_nblks > 0; remain_nblks--) {
+            int t = sfs_bmap_load_nolock(sfs, sin, blkno++, &ino);
+            assert(t == 0); // TODO: error handling
+            sfs_block_op(sfs, buf, ino, 1);
+            dzy_advance(buf, SFS_BLKSIZE);
+            alen += SFS_BLKSIZE;
+        }
+    }
+
+     /* (3) If end position isn't aligned with the last block, Rd/Wr some content from begin to the (endpos % SFS_BLKSIZE) of the last block
 	 *       NOTICE: useful function: sfs_bmap_load_nolock, sfs_buf_op	
 	*/
+    if (nblks > 0) { 
+        uint32_t last_blk_rwlen = endpos % SFS_BLKSIZE;
+        if (last_blk_rwlen > 0) {
+            int t = sfs_bmap_load_nolock(sfs, sin, blkno++, &ino);
+            assert(t == 0); // TODO: error handling
+            sfs_buf_op(sfs, buf, last_blk_rwlen, ino, 0); // blkoff = 0: read from the beginning
+            alen += last_blk_rwlen;
+        }
+    }
+
 out:
     *alenp = alen;
     if (offset + alen > sin->din->size) {
