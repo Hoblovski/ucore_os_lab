@@ -142,7 +142,7 @@ alloc_proc(void) {
         skew_heap_init(&(proc->lab6_run_pool));
         proc->lab6_stride = 0;
         proc->lab6_priority = 1;
-    //LAB8:EXERCISE2 YOUR CODE HINT:need add some code to init fs in proc_struct, ...
+    //LAB8:EXERCISE2 2015011296 HINT:need add some code to init fs in proc_struct, ...
         proc->filesp = files_create();
     }
     return proc;
@@ -450,7 +450,7 @@ do_fork(uint32_t clone_flags, uintptr_t stack, struct trapframe *tf) {
     ret = -E_NO_MEM;
 
     //LAB4:EXERCISE2 2015011296
-    //LAB8:EXERCISE2 YOUR CODE  HINT:how to copy the fs in parent's proc_struct?
+    //LAB8:EXERCISE2 2015011296  HINT:how to copy the fs in parent's proc_struct?
     /*
      * Some Useful MACROs, Functions and DEFINEs, you can use them in below implementation.
      * MACROs or Functions:
@@ -594,7 +594,7 @@ load_icode_read(int fd, void *buf, size_t len, off_t offset) {
 
 static int
 load_icode(int fd, int argc, char **kargv) {
-    /* LAB8:EXERCISE2 YOUR CODE  HINT:how to load the file with handler fd  in to process's memory? how to setup argc/argv?
+    /* LAB8:EXERCISE2  2015011296  HINT:how to load the file with handler fd  in to process's memory? how to setup argc/argv?
      * MACROs or Functions:
      *  mm_create        - create a mm
      *  setup_pgdir      - setup pgdir in mm
@@ -708,6 +708,7 @@ load_icode(int fd, int argc, char **kargv) {
             start += size;
         }
     }
+    sysfile_close(fd);
 
     /* (4) call mm_map to setup user stack, and put parameters into user stack */
         //(4) build user stack memory
