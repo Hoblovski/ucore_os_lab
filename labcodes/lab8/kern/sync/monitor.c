@@ -25,8 +25,18 @@ monitor_init (monitor_t * mtp, size_t num_cv) {
 // Unlock one of threads waiting on the condition variable. 
 void 
 cond_signal (condvar_t *cvp) {
-   //LAB7 EXERCISE1: YOUR CODE
+   //LAB7 EXERCISE1: 2015011296
    cprintf("cond_signal begin: cvp %x, cvp->count %d, cvp->owner->next_count %d\n", cvp, cvp->count, cvp->owner->next_count);  
+    if (cvp->count > 0) {
+        // I will go into the want-to-enter queue of my monitor
+        cvp->owner->next_count++;
+        // my condition is satisfied
+        up(&(cvp->sem));
+        // I wait for permission to enter my monitor
+        down(&(cvp->owner->next));
+        // Alright I got into my monitor and am no longer waiting.
+        cvp->owner->next_count--;
+    }
   /*
    *      cond_signal(cv) {
    *          if(cv.count>0) {
@@ -44,8 +54,23 @@ cond_signal (condvar_t *cvp) {
 // mutex and suspends calling thread on conditional variable after waking up locks mutex. Notice: mp is mutex semaphore for monitor's procedures
 void
 cond_wait (condvar_t *cvp) {
-    //LAB7 EXERCISE1: YOUR CODE
+    //LAB7 EXERCISE1: 2015011296
     cprintf("cond_wait begin:  cvp %x, cvp->count %d, cvp->owner->next_count %d\n", cvp, cvp->count, cvp->owner->next_count);
+    // another thread waiting on this condition
+    cvp->count++;
+    // someone else wants to enter my monitor
+    if (cvp->owner->next_count > 0) {
+        // ok, let him enter, as I temporarily will be sleeping
+        up(&(cvp->owner->next));
+    } else {
+        // no one want to enter, so I just release the lock
+        assert (cvp->owner->mutex.value == 0);
+        up(&(cvp->owner->mutex));
+    }
+    // wait on cvp
+    down(&(cvp->sem));
+    // I got the condition. one thread less waiting on it.
+    cvp->count--;
    /*
     *         cv.count ++;
     *         if(mt.next_count>0)
